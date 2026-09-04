@@ -1,7 +1,0 @@
-{
-  "autoStartVisio": true,
-  "logLevel": "info",
-  "confirmDestructiveActions": false,
-  "allowSilentOverwrite": false,
-  "comTimeoutMs": 30000
-}

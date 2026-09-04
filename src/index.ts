@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * VisioMCP — Entry Point
  *
