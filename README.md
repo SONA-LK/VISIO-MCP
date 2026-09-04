@@ -1,3 +1,5 @@
+[![M8ven Score](https://m8ven.ai/badge/mcp/sona-lk-visio-mcp-q2d1qb)](https://m8ven.ai/mcp/sona-lk-visio-mcp-q2d1qb)
+
 # VisioMCP
 
 **A Windows MCP server that controls Microsoft Visio via COM automation.**
