@@ -3,11 +3,18 @@
  *
  * Correct Visio COM connector approach:
  *
- *   The only reliable way to create a glued connector in Visio via COM without
- *   a stencil master is:
- *
- *   1. page.Drop(app.ConnectorToolDataObject, x, y)
- *      — drops a routed dynamic connector at position (x,y)
+ *   1. page.Drop(<the "Dynamic connector" master>, x, y)
+ *      — drops a routed dynamic connector at position (x,y).
+ *      `Application.ConnectorToolDataObject` looks like the obvious way to
+ *      get this (and is what VBA/pywin32 examples use), but it returns a
+ *      raw IDataObject/IUnknown pointer that winax cannot marshal — it
+ *      comes back as the literal string "[Unknown]", and passing that into
+ *      Page.Drop() fails with "DispInvoke: Drop Type mismatch." every
+ *      time. Dropping the real "Dynamic connector" master instead (the
+ *      same shape a user gets by dragging the Connector tool in the Visio
+ *      UI — found via `findDynamicConnectorMaster` below, either already
+ *      docked on a fresh document or opened from CONNEC_U.VSSX) sidesteps
+ *      the marshaling problem entirely and is otherwise identical.
  *
  *   2. connector.CellsU('BeginX').GlueTo(fromShape.CellsU('PinX'))
  *      — glues the connector BEGIN end to the from-shape's connection point
@@ -19,10 +26,11 @@
  *   GlueToPos(shape, x, y) is a different method with different semantics.
  *   BeginConnect/EndConnect only exist on the Shape.AutoConnect API.
  *
- * Fallback: If ConnectorToolDataObject or GlueTo are unavailable (older Visio),
- * we draw a plain line between shape centers and set ObjType = 2 (connector).
+ * Fallback: If the Dynamic connector master or GlueTo are unavailable, we
+ * draw a plain line between shape centers and set ObjType = 2 (connector).
  */
 
+import * as fs from 'fs';
 import { visioDocument } from './document';
 import { visioApp } from './application';
 import { logger } from '../utils/logger';
@@ -31,6 +39,39 @@ import { ConnectShapesInput, ConnectShapesResult, ConnectionDetail } from '../mo
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type COMObject = any;
+
+const DYNAMIC_CONNECTOR_MASTER = 'Dynamic connector';
+const CONNECTOR_STENCIL_PATH =
+  'C:\\Program Files\\Microsoft Office\\root\\Office16\\Visio Content\\1033\\CONNEC_U.VSSX';
+
+/** Find the real "Dynamic connector" master — see the module doc comment
+ * for why this replaces `Application.ConnectorToolDataObject`. Checks
+ * already-open documents first (a fresh blank drawing docks this
+ * automatically), then falls back to opening the Connectors stencil. */
+function findDynamicConnectorMaster(app: COMObject): COMObject | null {
+  try {
+    const count = Number(app.Documents.Count);
+    for (let i = 1; i <= count; i++) {
+      try {
+        const master = app.Documents.Item(i).Masters.Item(DYNAMIC_CONNECTOR_MASTER);
+        if (master) return master;
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    // fall through
+  }
+  if (fs.existsSync(CONNECTOR_STENCIL_PATH)) {
+    try {
+      const doc = app.Documents.OpenEx(CONNECTOR_STENCIL_PATH, 64); // docked, read-only
+      return doc.Masters.Item(DYNAMIC_CONNECTOR_MASTER);
+    } catch {
+      // fall through to null
+    }
+  }
+  return null;
+}
 
 // Visio ObjType constants
 const visObjTypeShape   = 1;
@@ -82,7 +123,7 @@ export class VisioConnectors {
   /**
    * Create a routed connector (arrow) between two shapes.
    *
-   * Strategy A (preferred): use ConnectorToolDataObject + GlueTo
+   * Strategy A (preferred): drop the real "Dynamic connector" master + GlueTo
    * Strategy B (fallback): DrawLine + set ObjType + manual glue via formula
    */
   async connectShapes(input: ConnectShapesInput): Promise<ConnectShapesResult> {
@@ -93,7 +134,7 @@ export class VisioConnectors {
     try {
       let connector: COMObject;
 
-      // Strategy A: proper dynamic connector via ConnectorToolDataObject
+      // Strategy A: proper dynamic connector via the Dynamic connector master
       connector = await this.tryDropConnector(page, fromShape, toShape);
 
       if (!connector) {
@@ -156,8 +197,8 @@ export class VisioConnectors {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   /**
-   * Strategy A: Drop a ConnectorToolDataObject and glue its endpoints.
-   * This creates a proper routed dynamic connector.
+   * Strategy A: Drop the real "Dynamic connector" master and glue its
+   * endpoints. This creates a proper routed dynamic connector.
    */
   private async tryDropConnector(
     page: COMObject,
@@ -166,10 +207,10 @@ export class VisioConnectors {
   ): Promise<COMObject | null> {
     try {
       const app = visioApp.getRawApp();
-      const connDataObj = app.ConnectorToolDataObject;
+      const connectorMaster = findDynamicConnectorMaster(app);
 
-      if (!connDataObj) {
-        logger.debug('ConnectorToolDataObject not available');
+      if (!connectorMaster) {
+        logger.debug('Dynamic connector master not available');
         return null;
       }
 
@@ -179,7 +220,7 @@ export class VisioConnectors {
       const midX = (from.x + to.x) / 2;
       const midY = (from.y + to.y) / 2;
 
-      const connector = page.Drop(connDataObj, midX, midY);
+      const connector = page.Drop(connectorMaster, midX, midY);
 
       // Glue BeginX end to fromShape's center connection point
       // GlueTo(cell) — glues this cell to the specified cell of the target shape
@@ -211,7 +252,7 @@ export class VisioConnectors {
 
       return connector;
     } catch (err) {
-      logger.warn('ConnectorToolDataObject strategy failed', { error: String(err) });
+      logger.warn('Dynamic connector master strategy failed', { error: String(err) });
       return null;
     }
   }

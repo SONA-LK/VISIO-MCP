@@ -21,6 +21,21 @@ import { logger } from '../utils/logger';
 import { wrapError } from '../utils/errors';
 import { Diagram, Node as DiagramNode, Edge } from './ir';
 import { TypeSpec, KindSpec, EdgeStyle } from './types/registry';
+import { CONTENT_DIR } from './stencils';
+
+// `Application.ConnectorToolDataObject` (the approach both the Python
+// reference and this repo's own low-level connect_shapes tool started
+// with) returns a raw IDataObject/IUnknown pointer that winax cannot
+// marshal -- it comes back as the string "[Unknown]" instead of a usable
+// reference, and passing that into Page.Drop() fails with "DispInvoke:
+// Drop Type mismatch." Dropping the real "Dynamic connector" master
+// instead (the same master a user gets by dragging the Connector tool in
+// the Visio UI) sidesteps the marshaling problem entirely and is
+// discovered the same way node masters are: a fresh blank drawing docks
+// the Basic/Connector/Flowchart stencils automatically, so it's usually
+// already open; CONNEC_U.VSSX is the fallback if not.
+const DYNAMIC_CONNECTOR_MASTER = 'Dynamic connector';
+const CONNECTOR_STENCIL_CANDIDATES = ['CONNEC_U.VSSX'];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type COMObject = any;
@@ -101,12 +116,18 @@ function centerTextBlock(shape: COMObject): void {
 export class VisioEngine {
   app: COMObject | null = null;
   log: string[] = [];
+  private connectorMaster: COMObject | null = null;
 
-  async connect(): Promise<COMObject> {
+  async connect(): Promise<void> {
+    // Deliberately returns void, not the raw COM object: returning a COM
+    // proxy as the resolved value of an async function makes the runtime's
+    // promise-resolution machinery probe it for a `.then` property, and
+    // winax's property-miss handling throws instead of yielding
+    // `undefined` for an unknown property -- read `this.app` after
+    // awaiting this instead of using the return value.
     await visioApp.ensureConnected();
     this.app = visioApp.getRawApp();
     this.log.push('Connected to Visio.');
-    return this.app;
   }
 
   // -- stencil masters ----------------------------------------------------
@@ -118,6 +139,47 @@ export class VisioEngine {
       this.log.push(`Could not open stencil ${stencilPath}: ${String(e)}`);
       return null;
     }
+  }
+
+  /** Resolve the real "Dynamic connector" master (see the module-level
+   * comment for why we drop this instead of using
+   * Application.ConnectorToolDataObject). Cached per render() call. */
+  private findConnectorMaster(): COMObject | null {
+    if (this.connectorMaster) return this.connectorMaster;
+
+    try {
+      const count = Number(this.app.Documents.Count);
+      for (let i = 1; i <= count; i++) {
+        try {
+          const d = this.app.Documents.Item(i);
+          const m = d.Masters.Item(DYNAMIC_CONNECTOR_MASTER);
+          if (m) {
+            this.connectorMaster = m;
+            return m;
+          }
+        } catch {
+          continue;
+        }
+      }
+    } catch {
+      // fall through to opening the stencil explicitly
+    }
+
+    for (const fname of CONNECTOR_STENCIL_CANDIDATES) {
+      const p = path.join(CONTENT_DIR, fname);
+      if (!fs.existsSync(p)) continue;
+      try {
+        const d = this.app.Documents.OpenEx(p, 64);
+        const m = d.Masters.Item(DYNAMIC_CONNECTOR_MASTER);
+        if (m) {
+          this.connectorMaster = m;
+          return m;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return null;
   }
 
   // -- primitive drawing (fallback when a master is unavailable) ----------
@@ -338,12 +400,19 @@ export class VisioEngine {
     const pts = edge.waypoints;
     if (pts.length < 2) return null;
 
-    // A real 1-D connector shape (dropped from the connector tool, as
-    // opposed to a DrawPolyline'd 2-D freeform) is required for
+    // A real 1-D connector shape (dropped from the Dynamic connector
+    // master, as opposed to a DrawPolyline'd 2-D freeform) is required for
     // Cell.GlueTo/GlueToPos to create an actual Visio glue relationship.
     // Without this, connectors are only positioned to *look* attached and
     // visibly detach the moment a shape is moved.
-    const conn = page.Drop(this.app.ConnectorToolDataObject, 0, 0);
+    const connectorMaster = this.findConnectorMaster();
+    if (!connectorMaster) {
+      this.log.push(
+        `No Dynamic connector master available -- skipped edge ${edge.source} -> ${edge.target}.`,
+      );
+      return null;
+    }
+    const conn = page.Drop(connectorMaster, pxX(pts[0][0]), pxY(pts[0][1], pageHIn));
     setNoFill(conn);
 
     let dashed: boolean;
@@ -427,6 +496,7 @@ export class VisioEngine {
     outPng: string,
     pngDpi = 150,
   ): Promise<RenderResult> {
+    this.connectorMaster = null; // may belong to a doc closed since the last render()
     if (this.app === null) {
       await this.connect();
     } else {
@@ -491,11 +561,15 @@ export class VisioEngine {
       for (const node of diagram.nodes) {
         shapeById.set(node.id, this.renderNode(page, spec, node, stencil, masterCache, pageHIn));
       }
+    } catch (e) {
+      throw wrapError(e, `render:drawNodes(shapeById has ${shapeById.size}/${diagram.nodes.length})`);
+    }
+    try {
       for (const edge of diagram.edges) {
         this.renderEdge(page, edge, spec.edge_style, pageHIn, shapeById, kindById);
       }
     } catch (e) {
-      throw wrapError(e, 'render:drawShapes');
+      throw wrapError(e, 'render:drawEdges');
     }
 
     try {

@@ -99,18 +99,13 @@ This happens most often when Visio is rendering a large diagram or showing a dia
 
 ### Connectors not visually connected to shapes
 
-**Symptom:** `connect_shapes` succeeds but the connector is a floating line.
+Fixed as of v0.2.0. Previously, `connect_shapes` always fell back to an unglued `DrawLine` because its "proper" strategy relied on `Application.ConnectorToolDataObject`, which the `winax` COM bridge cannot marshal (it comes back as the literal string `"[Unknown]"`, so every `Page.Drop()` call using it failed with `"DispInvoke: Drop Type mismatch"`, silently, every time). `connect_shapes` now drops the real "Dynamic connector" master instead — the same shape a user gets from the Connector tool in the Visio UI — which glues correctly. Verified with `get_connections`, which now reports real `fromShapeId`/`toShapeId` endpoints.
 
-**Causes:**
-- Visio COM `GlueTo` call failed silently. Check debug logs.
-- The connector is still drawn correctly (center-to-center) but not logically glued.
-
-**Fix:** In Visio, drag the connector endpoints to snap to the shapes manually, or try:
+If you still see a floating line on an older version, upgrade, or as a workaround:
 ```
 delete_shape (the connector)
 connect_shapes (retry)
 ```
-The connector will use the `DrawLine` fallback strategy which always succeeds.
 
 ---
 
