@@ -30,14 +30,22 @@ src/
 ├── index.ts              Entry point
 ├── mcp/
 │   ├── server.ts         MCP Server (stdio transport)
-│   ├── tools.ts          Tool dispatch + handlers
-│   └── schemas.ts        Zod input schemas
+│   ├── tools.ts          Low-level tool dispatch + handlers
+│   ├── schemas.ts        Zod input schemas
+│   ├── diagramTools.ts   analyze/plan/design tool handlers + prompt
+│   └── diagramSchemas.ts Zod schemas for the diagram IR + tool inputs
 ├── visio/
 │   ├── application.ts    COM connection to Visio.Application
 │   ├── document.ts       Document open/save/close/export
 │   ├── shapes.ts         Shape CRUD and manipulation
 │   ├── connectors.ts     Shape connectors
 │   └── detector.ts       VISIO.EXE detection
+├── diagram/              Diagram-generation pipeline (see ARCHITECTURE.md)
+│   ├── ir.ts              Page/Node/Edge/Diagram + validation
+│   ├── types/             KindSpec/TypeSpec registry + builtin types
+│   ├── layout/layered.ts  Auto-layout: rank -> order -> coords -> routing
+│   ├── stencils.ts        Discovery-first stencil resolution
+│   └── engine.ts          VisioEngine — renders the IR via COM
 ├── models/
 │   ├── shape.ts          ShapeInfo, ShapeType, default sizes
 │   ├── document.ts       DocumentInfo, PageInfo, ExportOptions
@@ -154,6 +162,16 @@ Always use `logger.info(...)`, `logger.error(...)`, etc.
 4. If new Visio logic is needed, add it to the appropriate `src/visio/*.ts` file
 5. Add unit tests in `src/tests/unit/`
 6. Add the tool to `TOOLS.md`
+
+---
+
+## Adding a Diagram Type
+
+The diagram-generation pipeline (`src/diagram/`) is deliberately type-agnostic — adding a new diagram type (e.g. BPMN, ER diagrams) needs no changes to the IR, layout engine, stencil resolver, rendering engine, or MCP tools:
+
+1. Create `src/diagram/types/<name>.ts`, building a `TypeSpec` (vocabulary → `KindSpec` masters/sizes/styles, candidate stencil filenames, layout strategy, edge style) and calling `register(spec)`. Use `src/diagram/types/activity.ts` or `flowchart.ts` as a template.
+2. Import it from `src/diagram/types/index.ts`.
+3. Add unit tests in `src/tests/unit/diagram/registry.test.ts` (or a new file) covering the vocabulary.
 
 ---
 

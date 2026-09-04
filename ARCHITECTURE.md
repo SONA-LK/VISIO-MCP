@@ -39,15 +39,31 @@ src/
 │
 ├── mcp/
 │   ├── server.ts               # MCP Server (stdio transport)
-│   ├── tools.ts                # Tool implementations & dispatch
-│   └── schemas.ts              # Zod input/output schemas
+│   ├── tools.ts                # Low-level tool implementations & dispatch
+│   ├── schemas.ts              # Zod input/output schemas
+│   ├── diagramTools.ts         # analyze/plan/design tool handlers + prompt
+│   └── diagramSchemas.ts       # Zod schemas for the diagram IR + tool inputs
 │
 ├── visio/
 │   ├── application.ts          # VisioApplication — COM connection
 │   ├── document.ts             # VisioDocument — open/save/close/export
-│   ├── shapes.ts               # VisioShapes — create/move/resize/delete
-│   ├── connectors.ts           # VisioConnectors — connect shapes
-│   └── detector.ts             # Visio executable detection
+│   ├── shapes.ts                # VisioShapes — create/move/resize/delete
+│   ├── connectors.ts            # VisioConnectors — connect shapes
+│   └── detector.ts              # Visio executable detection
+│
+├── diagram/                    # Diagram-generation pipeline (ported from
+│   │                            # visio-diagram-mcp) — COM-free logic and
+│   │                            # the COM rendering engine, kept separate.
+│   ├── ir.ts                   # Page/Node/Edge/Diagram + validation
+│   ├── types/
+│   │   ├── registry.ts          # KindSpec/EdgeStyle/TypeSpec registry
+│   │   ├── activity.ts          # "activity" (UML Activity) builtin type
+│   │   ├── flowchart.ts         # "flowchart" (Basic Flowchart) builtin type
+│   │   └── index.ts             # registers the builtin types
+│   ├── layout/
+│   │   └── layered.ts           # rank -> order -> coords -> route edges
+│   ├── stencils.ts              # discovery-first stencil resolution
+│   └── engine.ts                # VisioEngine — renders the IR via COM
 │
 ├── models/
 │   ├── shape.ts                # ShapeInfo, ShapeType, ShapeStyle
@@ -67,7 +83,8 @@ src/
     │   ├── schemas.test.ts
     │   ├── paths.test.ts
     │   ├── errors.test.ts
-    │   └── config.test.ts
+    │   ├── config.test.ts
+    │   └── diagram/            # ir/registry/layout/stencils/engine-helpers
     └── integration/            # Windows-only COM tests
         └── visio.integration.test.ts
 ```
@@ -91,6 +108,14 @@ src/
 - Coordinates are in inches (Visio's native unit)
 - Y-axis conversion: Visio uses bottom-left origin; we expose top-left
 - Uses singleton instances: `visioApp`, `visioDocument`, `visioShapes`, `visioConnectors`
+
+### Diagram Generation Layer (`src/diagram/`)
+
+Ported from the sibling `visio-diagram-mcp` (Python) project. Split the same way as `src/visio/` vs. the rest — COM-free logic is isolated so it stays testable on any OS:
+
+- **COM-free** (`ir.ts`, `types/*.ts`, `layout/layered.ts`, `stencils.ts`'s resolution logic): the diagram IR (px @96dpi, top-left origin, node coordinates as centers), the diagram-type registry (vocabulary → Visio master/style/size per element kind), and the layered auto-layout algorithm (rank → order → coordinates → orthogonal edge routing with side lanes for skips/loops).
+- **COM** (`engine.ts`): `VisioEngine` renders a positioned `Diagram` into a fresh Visio document — drops real stencil masters where resolved (primitive-drawn fallback otherwise), styles fill/line/text, glues connectors by computed side (`GlueToPos`) rather than plain center-to-center, and exports `.vsdx`/`.png`. Reuses the `visioApp` singleton for connection rather than a second independent COM strategy.
+- Diagram types are pluggable: `types/registry.ts` exposes `register()`; adding a new type is a new file under `types/` (see `activity.ts`/`flowchart.ts`) with no changes needed elsewhere.
 
 ### Models (`src/models/`)
 

@@ -289,6 +289,93 @@ Export to file.
 
 ---
 
+## Diagram Generation
+
+A higher-level pipeline on top of the shape tools above: describe a diagram in plain language, and let the AI drive **analyze → plan → design** through these tools instead of computing every shape coordinate by hand. Real Visio stencil masters (UML Activity, Basic Flowchart) are used where installed, with automatic layered layout and orthogonal connector routing. See the `diagram_from_requirement` MCP prompt for the guided workflow text.
+
+The diagram IR (the object passed as `spec`/`analysis` between phases) uses pixels at 96dpi, top-left origin, node coordinates as centers:
+
+```jsonc
+{
+  "diagram_type": "activity",
+  "title": "Online purchase",
+  "page": { "width_in": 8.5, "height_in": 11.0, "orientation": "portrait" },
+  "nodes": [
+    { "id": "start", "kind": "initial" },
+    { "id": "a1", "kind": "action", "label": "Browse products" },
+    { "id": "d1", "kind": "decision", "label": "Add to cart?" }
+    // optional per-node: "x", "y", "w", "h" (px @96dpi, center coords), "style"
+  ],
+  "edges": [
+    { "source": "start", "target": "a1" },
+    { "source": "d1", "target": "a1", "label": "[no]" }
+    // optional: "routing", "waypoints", "label_pos", "flow"
+  ]
+}
+```
+
+Coordinates are optional on input — omit them to auto-layout; supply them to pin exact positions (manual override always wins).
+
+### `list_diagram_types`
+List every diagram type the server can build, with a one-line description and the element-kind vocabulary each type allows. Currently ships `activity` (UML Activity) and `flowchart` (Basic Flowchart).
+
+**Input:** _(none)_
+
+---
+
+### `get_type_vocabulary`
+Return one diagram type's full element vocabulary: each kind's Visio master, default size, and default styling.
+
+**Input:** `diagram_type` (string, required)
+
+---
+
+### `resolve_stencil`
+Resolve which installed Visio stencil supplies a diagram type's masters — checks already-open documents, then candidate files, then a content-folder scan. Returns `status: "resolved"` with the stencil path, or `status: "needs_download"` (and never installs anything silently).
+
+**Input:** `diagram_type` (string, required)
+
+---
+
+### `validate_spec`
+Validate any diagram IR object: vocabulary/structure checks, plus geometry checks (on-page, no overlaps) once every node is positioned.
+
+**Input:** `spec` (object, required)
+
+**Output:** `{ "ok": boolean, "problems": string[] }`
+
+---
+
+### `analyze_requirement` — Phase 1
+You (the AI) read the requirement, choose a `diagram_type`, and extract `nodes`/`edges` using that type's vocabulary (from `get_type_vocabulary`). This tool validates the graph and saves an `analysis.json` artifact.
+
+**Input:** `diagram_type?`, `nodes?` (`[{id, kind, label}]`), `edges?` (`[{source, target, label?}]`), `requirement?`, `title?`, `rationale?`
+
+Omit `diagram_type` to get the type menu back (`status: "need_type"`) instead of validating.
+
+---
+
+### `plan_diagram` — Phase 2
+Takes the analysis (or any IR spec) and computes a concrete, positioned layout: ranks/rows, orthogonal edge routing, guard-label placement. Explicit `x`/`y` on any node, or explicit edge `waypoints`, are preserved.
+
+**Input:** `spec` (object, required — the analysis from phase 1)
+
+---
+
+### `design_diagram` — Phase 3
+Renders the positioned spec in Visio and saves `<out_basename>.vsdx` + `<out_basename>.png`. Resolves the stencil first; if it isn't installed, returns `status: "needs_download"` and renders nothing unless `allow_primitive_fallback: true`. Visio stays open and visible.
+
+**Input:**
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `spec` | object | **Yes** | The positioned spec from `plan_diagram`. |
+| `out_basename` | string | No | Output file base name (no extension). Default: `"diagram"`. |
+| `out_dir` | string | No | Output directory. Default: current working directory. |
+| `png_dpi` | integer | No | PNG export resolution. Default: `150`. |
+| `allow_primitive_fallback` | boolean | No | Draw with primitives if the stencil isn't installed. Default: `false`. |
+
+---
+
 ## Error Responses
 
 All tools return a consistent error structure on failure:

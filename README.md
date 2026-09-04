@@ -59,9 +59,26 @@ See [TOOLS.md](TOOLS.md) for the full list of available tools and their paramete
 
 **Export tools:** `export_document`
 
+**Diagram generation tools:** `list_diagram_types`, `get_type_vocabulary`, `resolve_stencil`, `validate_spec`, `analyze_requirement`, `plan_diagram`, `design_diagram` — a higher-level **analyze → plan → design** pipeline: describe a diagram in plain language and let the AI drive real Visio stencils (UML Activity, Basic Flowchart) through automatic layered layout and orthogonal connector routing, instead of placing every shape by hand. See the `diagram_from_requirement` prompt and the [Diagram Generation](TOOLS.md#diagram-generation) section of TOOLS.md.
+
 ---
 
-## Example: Network Diagram
+## Example: Diagram Generation (analyze → plan → design)
+
+```
+User: Draw a UML activity diagram for an online purchase flow.
+
+AI calls:
+1. list_diagram_types                         -> picks "activity"
+2. get_type_vocabulary { diagram_type: "activity" }
+3. analyze_requirement { diagram_type: "activity", nodes: [...], edges: [...] }
+4. plan_diagram { spec: <analysis> }          -> auto-layout + routing
+5. resolve_stencil { diagram_type: "activity" }
+6. design_diagram { spec: <positioned spec>, out_basename: "purchase-flow" }
+   -> purchase-flow.vsdx + purchase-flow.png, real UML masters, orthogonal connectors
+```
+
+## Example: Network Diagram (low-level shape tools)
 
 ```
 User: Create a network diagram with a router, firewall, and server.
