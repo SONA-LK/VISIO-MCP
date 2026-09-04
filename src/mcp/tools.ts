@@ -19,6 +19,7 @@ import { visioShapes } from '../visio/shapes';
 import { visioConnectors } from '../visio/connectors';
 import { validateVisioFilePath } from '../utils/paths';
 import { AddShapeInput } from '../models/shape';
+import { DIAGRAM_TOOL_DEFS, handleDiagramTool } from './diagramTools';
 
 import {
   GetVisioStatusSchema,
@@ -313,6 +314,7 @@ export const TOOLS = [
       required: ['outputPath', 'format'],
     },
   },
+  ...DIAGRAM_TOOL_DEFS,
 ] as const;
 
 // ── Tool Handlers ──────────────────────────────────────────────────────────────
@@ -481,8 +483,13 @@ export async function handleTool(
         return ok({ message: `Exported to ${input.outputPath}.` });
       }
 
-      default:
+      // ── Diagram generation (analyze -> plan -> design) ─────────────────────
+
+      default: {
+        const diagramResult = await handleDiagramTool(toolName, rawInput);
+        if (diagramResult !== null) return ok(diagramResult);
         return fail(new Error(`Unknown tool: "${toolName}"`));
+      }
     }
   } catch (err) {
     return fail(err);

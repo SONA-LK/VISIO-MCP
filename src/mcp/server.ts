@@ -12,13 +12,26 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { logger } from '../utils/logger';
 import { TOOLS, handleTool } from './tools';
+import { DIAGRAM_FROM_REQUIREMENT_PROMPT } from './diagramTools';
 
 const SERVER_NAME    = 'VisioMCP';
-const SERVER_VERSION = '0.1.0';
+const SERVER_VERSION = '0.2.0';
+
+const PROMPTS = [
+  {
+    name: 'diagram_from_requirement',
+    description: 'Guided workflow: analyze -> plan -> design a Visio diagram from a plain-language requirement.',
+    arguments: [
+      { name: 'requirement', description: 'Plain-language description of the diagram to build.', required: true },
+    ],
+  },
+] as const;
 
 export async function startServer(): Promise<void> {
   logger.info(`Starting ${SERVER_NAME} v${SERVER_VERSION}`);
@@ -31,6 +44,7 @@ export async function startServer(): Promise<void> {
     {
       capabilities: {
         tools: {},
+        prompts: {},
       },
     },
   );
@@ -64,6 +78,34 @@ export async function startServer(): Promise<void> {
         },
       ],
       isError: !result.success,
+    };
+  });
+
+  // ── List Prompts ───────────────────────────────────────────────────────────
+  server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    logger.debug('ListPrompts requested');
+    return { prompts: PROMPTS };
+  });
+
+  // ── Get Prompt ─────────────────────────────────────────────────────────────
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    logger.info(`Prompt requested: ${name}`);
+
+    if (name !== 'diagram_from_requirement') {
+      throw new Error(`Unknown prompt: "${name}"`);
+    }
+    const requirement = (args?.requirement as string | undefined) ?? '';
+    return {
+      messages: [
+        {
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: DIAGRAM_FROM_REQUIREMENT_PROMPT(requirement),
+          },
+        },
+      ],
     };
   });
 
