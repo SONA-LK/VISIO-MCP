@@ -21,8 +21,15 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
+      # --ignore-scripts: skip compiling the winax native addon here.
+      # node-gyp can't reliably detect the VS toolchain on hosted runners
+      # (observed failing against windows-latest's bundled VS install), and
+      # unit tests never load winax anyway (only the Windows+Visio
+      # integration tests do, which aren't run in CI). Real installs by end
+      # users are unaffected -- npm always runs install scripts normally
+      # outside of an explicit --ignore-scripts flag.
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Type check
         run: npm run lint

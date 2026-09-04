@@ -23,8 +23,12 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
+      # --ignore-scripts: skip compiling the winax native addon here (see
+      # ci.yml for why). Publishing only needs dist/ built and doesn't
+      # require winax to actually load; end users' own installs are
+      # unaffected.
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build
         run: npm run build
