@@ -7,7 +7,7 @@ Any MCP-compatible AI client can create, edit, read, and export Visio diagrams b
 ```
 AI Client (Claude, GPT, etc.)
        ↕ MCP / stdio
-  VisioMCP.exe
+  VisioMCP (npx / node)
        ↕ Windows COM
   Microsoft Visio
 ```
@@ -20,25 +20,28 @@ AI Client (Claude, GPT, etc.)
 
 - Windows 10 or 11
 - Microsoft Visio (2013, 2016, 2019, 2021, or Microsoft 365)
-- An MCP-compatible AI client (Claude Desktop, etc.)
+- Node.js 18+
+- An MCP-compatible AI client (Claude Desktop, Claude Code, etc.)
+- The "Desktop development with C++" workload from [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) — `winax`, the Windows COM bridge VisioMCP uses to talk to Visio, is a native addon compiled on install. This is a one-time setup step, same as any other native Node addon (e.g. `keytar`, `robotjs`).
 
 ### Install
 
-1. Download `VisioMCP-Setup.exe` from the releases page.
-2. Run the installer. Visio is auto-detected — no configuration needed in most cases.
-3. Add VisioMCP to your MCP client config:
+Add VisioMCP to your MCP client config — no download or installer needed, `npx` fetches and runs the package on first use:
 
 ```json
 {
   "mcpServers": {
     "visio": {
-      "command": "C:\\Program Files\\VisioMCP\\VisioMCP.exe"
+      "command": "npx",
+      "args": ["-y", "visiomcp"]
     }
   }
 }
 ```
 
-4. Restart your AI client. You should see Visio tools available.
+Restart your AI client. You should see Visio tools available. (npx will compile the native `winax` addon the first time it runs, which takes a little longer than a normal npx invocation — this only happens once.)
+
+Prefer a permanent install? `npm install -g visiomcp` and point `command` at `visiomcp` directly instead of `npx`.
 
 ---
 

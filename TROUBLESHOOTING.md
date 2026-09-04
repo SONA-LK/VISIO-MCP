@@ -42,7 +42,7 @@ Set `"logLevel": "debug"` in config for maximum detail.
 1. COM registration is broken — repair Office from Windows Apps settings.
 2. Visio needs activation — open Visio manually once and complete activation.
 3. Anti-virus blocking COM launch — add exception for `VISIO.EXE`.
-4. Running as a restricted user — try running VisioMCP.exe as Administrator once.
+4. Running as a restricted user — try running your MCP client (or a manual `npx visiomcp`) as Administrator once.
 
 ---
 
@@ -119,10 +119,10 @@ The connector will use the `DrawLine` fallback strategy which always succeeds.
 **Symptom:** Your AI client shows no Visio tools.
 
 **Checks:**
-1. Verify the path in your MCP config points to the correct `VisioMCP.exe`.
+1. Verify your MCP config runs `npx -y visiomcp` (or `visiomcp` if globally installed).
 2. Test manually:
    ```bat
-   echo {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}} | VisioMCP.exe
+   echo {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}} | npx -y visiomcp
    ```
    You should see a JSON list of tools on stdout immediately.
 3. Check the MCP client logs — some clients log MCP errors separately.
@@ -130,19 +130,18 @@ The connector will use the `DrawLine` fallback strategy which always succeeds.
 
 ---
 
-### "require('winax') failed" in logs
+### "require('winax') failed" in logs, or `npx`/`npm install` fails with a `node-gyp` error
 
-**Symptom:** VisioMCP starts but immediately errors with winax load failure.
+**Symptom:** VisioMCP starts but immediately errors with a winax load failure, or the initial `npx visiomcp` / `npm install` itself fails with output mentioning `node-gyp rebuild`, `MSBuild`, or "Could not find any Visual Studio installation."
 
-**Fix:**
+**Cause:** `winax` is a native COM addon — it's compiled from source the first time it's installed, and that requires a C++ build toolchain.
+
+**Fix:** Install the "Desktop development with C++" workload from the [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) installer, then retry:
 ```bat
-cd VisioMCP
-npm rebuild winax
-npm run build
-npm run package
+npx clear-npx-cache
+npx -y visiomcp
 ```
-
-The native addon must be compiled on the same Windows machine where it runs.
+(or, for a global install: `npm install -g visiomcp`). The native addon must be compiled on the same Windows machine where it runs — this is a one-time step per machine.
 
 ---
 

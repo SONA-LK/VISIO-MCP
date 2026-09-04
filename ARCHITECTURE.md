@@ -9,7 +9,7 @@ VisioMCP is a Windows-only MCP (Model Context Protocol) server that bridges AI c
 │                        USER MACHINE                           │
 │                                                               │
 │  ┌──────────────┐       MCP stdio       ┌─────────────────┐  │
-│  │  AI Client   │ ◄───────────────────► │  VisioMCP.exe   │  │
+│  │  AI Client   │ ◄───────────────────► │ VisioMCP (npx)  │  │
 │  │  (Claude,    │                       │                 │  │
 │  │   GPT, etc.) │                       │  ┌───────────┐  │  │
 │  └──────────────┘                       │  │ MCP Layer │  │  │
@@ -141,15 +141,13 @@ Visio shapes have integer IDs. VisioMCP exposes them as `Sheet.N` strings (e.g. 
 
 ## Packaging
 
-Built with `pkg` to produce a self-contained `VisioMCP.exe`:
+Published as a standard npm package and launched via `npx`/`node` — no custom installer or bundled exe:
 
 ```
-TypeScript → tsc → dist/index.js → pkg → VisioMCP.exe
+TypeScript → tsc → dist/index.js → npm publish → npx visiomcp
 ```
 
-The EXE bundles the Node.js runtime. Target machines do not need Node.js installed.
-
-`winax` (native COM addon) is included as a binary asset in the package.
+Target machines need Node.js 18+ (already required by most MCP clients) plus the "Desktop development with C++" Visual Studio Build Tools workload, since `winax` (the native COM bridge) is compiled from source on install via `node-gyp` — the standard model for native Node addons.
 
 ---
 

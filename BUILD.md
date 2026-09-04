@@ -20,70 +20,45 @@ Output: `dist/` directory with compiled JavaScript.
 
 ---
 
-## Standalone EXE (VisioMCP.exe)
+## Publishing to npm
 
-The final executable bundles the Node.js runtime and all dependencies so the target machine does **not** need Node.js installed.
+VisioMCP is distributed as a plain npm package — no bundled exe, no custom installer. MCP clients launch it directly with `npx`/`node`.
 
-### Step 1 — Install pkg globally
-
-```bat
-npm install -g pkg
-```
-
-### Step 2 — Build the project
+### Step 1 — Build and test
 
 ```bat
 npm run build
+npm run test:unit
 ```
 
-### Step 3 — Package to EXE
+### Step 2 — Publish
 
 ```bat
-npm run package
+npm publish
 ```
 
-This runs: `pkg dist/index.js --targets node18-win-x64 --output VisioMCP.exe --config pkg.config.json`
+`prepublishOnly` runs the build automatically, and `"files": ["dist"]` keeps the published tarball to just the compiled output (plus `package.json`/`README.md`/`LICENSE`, included by npm by default).
 
-Output: `VisioMCP.exe` in the project root (~60–80 MB).
+### Automated releases
+
+`.github/workflows/publish.yml` runs this same build+test+publish sequence on `windows-latest` whenever a `v*` tag is pushed:
+
+```bat
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+This requires an `NPM_TOKEN` repository secret (Settings → Secrets and variables → Actions) holding an npm automation token with publish rights for the `visiomcp` package.
 
 ### Important: winax native binary
 
-`winax` is a native Windows addon (`winax.node`). pkg bundles it as an asset.
-The `pkg.config.json` includes:
-```json
-"assets": [
-  "node_modules/winax/build/Release/winax.node"
-]
-```
+`winax` is a native Windows COM addon (`winax.node`), compiled from source via `node-gyp` when a user runs `npx visiomcp` / `npm install`. This requires the "Desktop development with C++" Visual Studio Build Tools workload on the *user's* machine — there is nothing the maintainer needs to bundle for this; it's the standard model for any native Node addon (same as `keytar`, `robotjs`, etc.).
 
-If pkg cannot find the `.node` file, run:
-```bat
-npm rebuild winax
-```
-
----
-
-## Installer (VisioMCP-Setup.exe)
-
-Use [Inno Setup](https://jrsoftware.org/isinfo.php) with the provided script:
-
-```bat
-iscc installer\VisioMCP.iss
-```
-
-The installer:
-1. Checks Windows version
-2. Detects Microsoft Visio installation
-3. Copies `VisioMCP.exe` to `C:\Program Files\VisioMCP\`
-4. Creates default config at `%LOCALAPPDATA%\VisioMCP\config.json`
-5. Creates log directory `%LOCALAPPDATA%\VisioMCP\logs\`
-6. Displays MCP client configuration instructions
+If a local `npm install` fails on `node-gyp rebuild`, install the Build Tools workload above and retry.
 
 ---
 
 ## MCP Client Configuration
-
-After installation, add to your MCP client config:
 
 ### Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`)
 
@@ -91,7 +66,8 @@ After installation, add to your MCP client config:
 {
   "mcpServers": {
     "visio": {
-      "command": "C:\\Program Files\\VisioMCP\\VisioMCP.exe"
+      "command": "npx",
+      "args": ["-y", "visiomcp"]
     }
   }
 }
@@ -103,7 +79,8 @@ After installation, add to your MCP client config:
 {
   "mcp.servers": {
     "visio": {
-      "command": "C:\\Program Files\\VisioMCP\\VisioMCP.exe",
+      "command": "npx",
+      "args": ["-y", "visiomcp"],
       "transport": "stdio"
     }
   }
@@ -114,10 +91,10 @@ After installation, add to your MCP client config:
 
 ## Verifying the Build
 
-Run the EXE manually to test stdio:
+Run the built server manually to test stdio:
 
 ```bat
-echo {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}} | VisioMCP.exe
+echo {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}} | node dist/index.js
 ```
 
 Expected: JSON response listing all tools on stdout (no log output on stdout).
@@ -129,8 +106,7 @@ Expected: JSON response listing all tools on stdout (no log output on stdout).
 | Component | Requirement |
 |---|---|
 | OS | Windows 10/11 x64 |
-| Node.js | 18.x (bundled in EXE) |
+| Node.js | 18.x+ (required on the end-user's machine, same as any npm CLI tool) |
 | TypeScript | 5.3+ (dev only) |
-| winax | must build natively on Windows |
-| pkg | must run on Windows to bundle native addon |
+| winax | compiled natively on install (`node-gyp`), needs VS Build Tools |
 | Visio | required at runtime; not at build time |
